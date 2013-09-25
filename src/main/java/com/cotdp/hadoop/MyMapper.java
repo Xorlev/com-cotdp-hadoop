@@ -18,21 +18,16 @@ import java.io.IOException;
 /**
  * This Mapper class checks the filename ends with the .txt extension, cleans
  * the text and then applies the simple WordCount algorithm.
- *
  */
-public  class MyMapper
-  extends Mapper<Text, BytesWritable, NullWritable, Text>
-{
+public class MyMapper extends Mapper<Text, BytesWritable, NullWritable, Text> {
 
-  @Override
-  public void map( Text key, BytesWritable value, Context context )
-    throws IOException, InterruptedException
-  {
+    @Override
+    public void map(Text key, BytesWritable value, Context context) throws IOException, InterruptedException {
 
 
-    byte[] data = value.getBytes();
-    context.write(null, new Text(data));
+        byte[] data = value.getBytes();
+        context.write(null, new Text(data));
 
 
-  }
+    }
 }

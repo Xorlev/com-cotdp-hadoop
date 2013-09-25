@@ -39,146 +39,129 @@ import java.util.zip.ZipInputStream;
  * file and hands them over to the Mapper. The "key" is the decompressed
  * file name, the "value" is the file contents.
  */
-public class ZipFileRecordReader
-  extends RecordReader<Text, BytesWritable>
-{
-  /** InputStream used to read the ZIP file from the FileSystem */
-  private FSDataInputStream fsin;
+public class ZipFileRecordReader extends RecordReader<Text, BytesWritable> {
+    /**
+     * InputStream used to read the ZIP file from the FileSystem
+     */
+    private FSDataInputStream fsin;
 
-  /** ZIP file parser/decompresser */
-  private ZipInputStream zip;
+    /**
+     * ZIP file parser/decompresser
+     */
+    private ZipInputStream zip;
 
-  private ZipEntry entry = null;
-  /** Uncompressed file name */
-  private Text currentKey;
+    private ZipEntry entry = null;
+    /**
+     * Uncompressed file name
+     */
+    private Text currentKey;
 
-  /** Uncompressed file contents */
-  private BytesWritable currentValue;
+    /**
+     * Uncompressed file contents
+     */
+    private BytesWritable currentValue;
 
-  /** Used to indicate progress */
-  private boolean isFinished = false;
+    /**
+     * Used to indicate progress
+     */
+    private boolean isFinished = false;
 
-  /**
-   * Initialise and open the ZIP file from the FileSystem
-   */
+    /**
+     * Initialise and open the ZIP file from the FileSystem
+     */
 
-  public void initialize( InputSplit inputSplit, TaskAttemptContext taskAttemptContext )
-    throws IOException, InterruptedException
-  {
-    FileSplit split = (FileSplit) inputSplit;
-    Configuration conf = taskAttemptContext.getConfiguration();
-    Path path = split.getPath();
-    FileSystem fs = path.getFileSystem( conf );
+    public void initialize(InputSplit inputSplit, TaskAttemptContext taskAttemptContext) throws IOException, InterruptedException {
+        FileSplit split = (FileSplit) inputSplit;
+        Configuration conf = taskAttemptContext.getConfiguration();
+        Path path = split.getPath();
+        FileSystem fs = path.getFileSystem(conf);
 
-    // Open the stream
-    fsin = fs.open( path );
-    zip = new ZipInputStream( fsin );
-    try
-    {
-      entry = zip.getNextEntry();
-    }
-    catch ( ZipException e )
-    {
-      if ( ZipFileInputFormat.getLenient() == false )
-        throw e;
-    }
-  }
-
-  /**
-   * This is where the magic happens, each ZipEntry is decompressed and
-   * readied for the Mapper. The contents of each file is held *in memory*
-   * in a BytesWritable object.
-   *
-   * If the ZipFileInputFormat has been set to Lenient (not the default),
-   * certain exceptions will be gracefully ignored to prevent a larger job
-   * from failing.
-   */
-  public boolean nextKeyValue()
-    throws IOException, InterruptedException
-  {
-
-
-    // Sanity check
-    if ( entry == null )
-    {
-      isFinished = true;
-      System.out.println("Is Finished "+isFinished);
-      return false;
+        // Open the stream
+        fsin = fs.open(path);
+        zip = new ZipInputStream(fsin);
+        try {
+            entry = zip.getNextEntry();
+        } catch (ZipException e) {
+            if (!ZipFileInputFormat.getLenient()) throw e;
+        }
     }
 
-    // Filename
-    currentKey = new Text( entry.getName() );
+    /**
+     * This is where the magic happens, each ZipEntry is decompressed and
+     * readied for the Mapper. The contents of each file is held *in memory*
+     * in a BytesWritable object.
+     * <p/>
+     * If the ZipFileInputFormat has been set to Lenient (not the default),
+     * certain exceptions will be gracefully ignored to prevent a larger job
+     * from failing.
+     */
+    public boolean nextKeyValue() throws IOException, InterruptedException {
 
-    // Read the file contents
-    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    byte[] temp = new byte[10485760];
 
-    int bytesRead = 0;
-    try
-    {
-      bytesRead = zip.read( temp, 0, 10485760 );
+        // Sanity check
+        if (entry == null) {
+            isFinished = true;
+            System.out.println("Is Finished " + isFinished);
+            return false;
+        }
+
+        // Filename
+        currentKey = new Text(entry.getName());
+
+        // Read the file contents
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] temp = new byte[10485760];
+
+        int bytesRead;
+        try {
+            bytesRead = zip.read(temp, 0, 10485760);
+        } catch (EOFException e) {
+            if (!ZipFileInputFormat.getLenient()) throw e;
+            entry = null;
+            return false;
+        }
+        if (bytesRead > 0) bos.write(temp, 0, bytesRead);
+        else entry = zip.getNextEntry();
+
+
+        // Uncompressed contents
+        currentValue = new BytesWritable(bos.toByteArray());
+        return true;
     }
-    catch ( EOFException e )
-    {
-      if ( ZipFileInputFormat.getLenient() == false )
-        throw e;
-      entry = null;
-      return false;
+
+    /**
+     * Rather than calculating progress, we just keep it simple
+     */
+
+    public float getProgress() throws IOException, InterruptedException {
+        return isFinished ? 1 : 0;
     }
-    if ( bytesRead > 0 )
-      bos.write( temp, 0, bytesRead );
-    else
-      entry = zip.getNextEntry();
 
+    /**
+     * Returns the current key (name of the zipped file)
+     */
 
+    public Text getCurrentKey() throws IOException, InterruptedException {
+        return currentKey;
+    }
 
+    /**
+     * Returns the current value (contents of the zipped file)
+     */
 
-    // Uncompressed contents
-    currentValue = new BytesWritable( bos.toByteArray() );
-    return true;
-  }
+    public BytesWritable getCurrentValue() throws IOException, InterruptedException {
+        return currentValue;
+    }
 
-  /**
-   * Rather than calculating progress, we just keep it simple
-   */
+    /**
+     * Close quietly, ignoring any exceptions
+     */
 
-  public float getProgress()
-    throws IOException, InterruptedException
-  {
-    return isFinished ? 1 : 0;
-  }
-
-  /**
-   * Returns the current key (name of the zipped file)
-   */
-
-  public Text getCurrentKey()
-    throws IOException, InterruptedException
-  {
-    return currentKey;
-  }
-
-  /**
-   * Returns the current value (contents of the zipped file)
-   */
-
-  public BytesWritable getCurrentValue()
-    throws IOException, InterruptedException
-  {
-    return currentValue;
-  }
-
-  /**
-   * Close quietly, ignoring any exceptions
-   */
-
-  public void close()
-    throws IOException
-  {
-    try {zip.closeEntry();} catch (Exception ignore) { }
-    try { zip.close(); } catch ( Exception ignore ) { }
-    try { fsin.close(); } catch ( Exception ignore ) { }
-  }
+    public void close() throws IOException {
+        try {zip.closeEntry();} catch (Exception ignore) { }
+        try { zip.close(); } catch (Exception ignore) { }
+        try { fsin.close(); } catch (Exception ignore) { }
+    }
 
 
 }
